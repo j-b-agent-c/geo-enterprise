@@ -6,7 +6,7 @@ import io
 
 # --- CONFIGURATION ---
 # ⚠️ REPLACE 'YOUR_USERNAME' WITH YOUR ACTUAL GITHUB USERNAME BELOW
-REPO_NAME = "YOUR_USERNAME/geo-enterprise" 
+REPO_NAME = "j-b-agent-c/geo-enterprise" 
 
 def get_repo():
     # We grab the token from secrets
