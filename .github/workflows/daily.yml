@@ -1,0 +1,20 @@
+name: Daily Audit
+on:
+  schedule:
+    - cron: '0 8 * * *' # 8am UTC Daily
+  workflow_dispatch: # Manual Button
+
+jobs:
+  run-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - run: pip install pandas google-generativeai openai PyGithub
+      - run: python daily_audit.py
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
