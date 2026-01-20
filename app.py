@@ -59,4 +59,103 @@ with tab2:
         # Filter data by category first
         cat_df = df[df['category'] == selected_cat].copy()
         
-        use_cases =
+        use_cases = cat_df['use_case'].unique() if 'use_case' in cat_df.columns else []
+        selected_case = col2.selectbox("Select Use Case", use_cases)
+        
+        # Final filtered dataset for this view
+        dff = cat_df[cat_df['use_case'] == selected_case].copy()
+        
+        # Get the latest run date for "Current State" analysis
+        latest_date = dff['date'].max()
+        latest_df = dff[dff['date'] == latest_date].copy()
+
+        st.divider()
+
+        # --- DATA POINT 1: SHARE OF VOICE & POSITION ---
+        st.subheader("1. Category Leaderboard (Share of Voice)")
+        
+        if not dff.empty:
+            # We count how many times each brand appears in the 'Competitor' or 'Target' list
+            brand_counts = dff['brand'].value_counts().reset_index()
+            brand_counts.columns = ['Brand', 'Mentions']
+            
+            # Average Rank Calculation
+            avg_rank = dff.groupby('brand')['rank'].mean().reset_index()
+            # FIX: Rename columns to match 'brand_counts' for the merge
+            avg_rank.columns = ['Brand', 'Avg_Rank']
+            
+            leaderboard = pd.merge(brand_counts, avg_rank, on='Brand')
+            leaderboard = leaderboard.sort_values(by='Mentions', ascending=False).head(10)
+            
+            fig_sov = px.bar(leaderboard, x='Mentions', y='Brand', color='Avg_Rank', 
+                             title="Top Brands by Frequency of Mention (All Time)",
+                             orientation='h', color_continuous_scale='Bluered_r')
+            fig_sov.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_sov, use_container_width=True)
+
+        col_a, col_b = st.columns(2)
+
+        # --- DATA POINT 2: VECTOR WEIGHTS (Rules of the Game) ---
+        with col_a:
+            st.subheader("2. Decision Vector Weights")
+            # Grab the weights from the most recent run (Target row)
+            target_row = latest_df[latest_df['type'] == 'Target'].iloc[0] if not latest_df.empty and 'type' in latest_df.columns and (latest_df['type'] == 'Target').any() else None
+            
+            if target_row is not None and isinstance(target_row['vector_weights'], str):
+                try:
+                    weights = json.loads(target_row['vector_weights'])
+                    w_df = pd.DataFrame(list(weights.items()), columns=['Vector', 'Weight'])
+                    
+                    fig_w = px.pie(w_df, values='Weight', names='Vector', 
+                                   title=f"What Matters in '{selected_case}'?", hole=0.4)
+                    st.plotly_chart(fig_w, use_container_width=True)
+                except:
+                    st.warning("Could not parse vector weights.")
+            else:
+                st.info("No vector weights found for this selection.")
+
+        # --- DATA POINT 5: SOURCE ATTRIBUTION ---
+        with col_b:
+            st.subheader("5. Source Citation Frequency")
+            # Aggregate all sources from the filtered view
+            all_sources = []
+            if 'sources' in dff.columns:
+                # Parse every row's source list
+                source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
+                for lst in source_lists:
+                    all_sources.extend(lst)
+            
+            if all_sources:
+                source_counts = Counter(all_sources).most_common(10)
+                s_df = pd.DataFrame(source_counts, columns=['Source', 'Citations'])
+                fig_src = px.bar(s_df, x='Citations', y='Source', orientation='h', 
+                                 title="Top Referenced Sources")
+                fig_src.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig_src, use_container_width=True)
+            else:
+                st.info("No source data available.")
+
+        st.divider()
+
+        # --- DATA POINT 3 & 4: GAP ANALYSIS & EUCLIDEAN DISTANCE ---
+        st.subheader("3 & 4. Competitive Gap Analysis (Distance from Perfect)")
+        
+        # Scatter plot: X = Brand, Y = Distance
+        
+        if not latest_df.empty:
+            # Sort by rank for cleaner viewing
+            latest_df = latest_df.sort_values(by='rank')
+            
+            fig_gap = px.scatter(latest_df, x='brand', y='total_distance', 
+                                 size='rank', color='type',
+                                 title=f"Euclidean Distance from Perfection (Lower is Better) - {latest_date}",
+                                 color_discrete_map={"Target": "red", "Competitor": "blue"},
+                                 hover_data=['rank'])
+            
+            # Invert Y axis because 0 distance is "Perfect" (Top)
+            fig_gap.update_yaxes(autorange="reversed", title="Distance from Perfect 10")
+            st.plotly_chart(fig_gap, use_container_width=True)
+        
+        # --- RAW DATA INSPECTOR ---
+        with st.expander("🔍 Inspect Raw Data"):
+            st.dataframe(dff)
