@@ -95,7 +95,7 @@ with tab2:
 
         col_a, col_b = st.columns(2)
 
-        # --- DATA POINT 2: VECTOR WEIGHTS (Rules of the Game) ---
+        # --- DATA POINT 2: VECTOR WEIGHTS ---
         with col_a:
             st.subheader("2. Decision Vector Weights")
             # Grab the weights from the most recent run (Target row)
@@ -114,13 +114,55 @@ with tab2:
             else:
                 st.info("No vector weights found for this selection.")
 
+        # --- DATA POINT 3 (NEW): COMPETITIVE SCORECARD ---
+        st.subheader("3. Detailed Competitive Scorecard")
+        
+        if not latest_df.empty and 'vector_scores' in latest_df.columns:
+            # Parse the scores for every brand in the latest run
+            score_data = []
+            for idx, row in latest_df.iterrows():
+                try:
+                    scores = json.loads(row['vector_scores'])
+                    # Add Brand Name to the dict so we can pivot later
+                    scores['Brand'] = row['brand']
+                    score_data.append(scores)
+                except:
+                    continue
+            
+            if score_data:
+                scores_df = pd.DataFrame(score_data)
+                scores_df = scores_df.set_index('Brand')
+                
+                # Heatmap visualization
+                fig_hm = px.imshow(scores_df, text_auto=True, aspect="auto",
+                                   color_continuous_scale='RdBu', 
+                                   title=f"Head-to-Head: Brand Scores per Vector ({latest_date})")
+                st.plotly_chart(fig_hm, use_container_width=True)
+            else:
+                st.info("No detailed score data available.")
+
+        st.divider()
+
+        col_c, col_d = st.columns(2)
+
+        # --- DATA POINT 4: GAP ANALYSIS ---
+        with col_c:
+            st.subheader("4. Gap from Perfection")
+            if not latest_df.empty:
+                latest_df = latest_df.sort_values(by='rank')
+                fig_gap = px.scatter(latest_df, x='brand', y='total_distance', 
+                                     size='rank', color='type',
+                                     title="Euclidean Distance (Lower is Better)",
+                                     color_discrete_map={"Target": "red", "Competitor": "blue"},
+                                     hover_data=['rank'])
+                fig_gap.update_yaxes(autorange="reversed")
+                st.plotly_chart(fig_gap, use_container_width=True)
+
         # --- DATA POINT 5: SOURCE ATTRIBUTION ---
-        with col_b:
-            st.subheader("5. Source Citation Frequency")
-            # Aggregate all sources from the filtered view
+        with col_d:
+            st.subheader("5. Source Citations")
             all_sources = []
             if 'sources' in dff.columns:
-                # Parse every row's source list
                 source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
                 for lst in source_lists:
                     all_sources.extend(lst)
@@ -135,27 +177,6 @@ with tab2:
             else:
                 st.info("No source data available.")
 
-        st.divider()
-
-        # --- DATA POINT 3 & 4: GAP ANALYSIS & EUCLIDEAN DISTANCE ---
-        st.subheader("3 & 4. Competitive Gap Analysis (Distance from Perfect)")
-        
-        # Scatter plot: X = Brand, Y = Distance
-        
-        if not latest_df.empty:
-            # Sort by rank for cleaner viewing
-            latest_df = latest_df.sort_values(by='rank')
-            
-            fig_gap = px.scatter(latest_df, x='brand', y='total_distance', 
-                                 size='rank', color='type',
-                                 title=f"Euclidean Distance from Perfection (Lower is Better) - {latest_date}",
-                                 color_discrete_map={"Target": "red", "Competitor": "blue"},
-                                 hover_data=['rank'])
-            
-            # Invert Y axis because 0 distance is "Perfect" (Top)
-            fig_gap.update_yaxes(autorange="reversed", title="Distance from Perfect 10")
-            st.plotly_chart(fig_gap, use_container_width=True)
-        
         # --- RAW DATA INSPECTOR ---
         with st.expander("🔍 Inspect Raw Data"):
             st.dataframe(dff)
