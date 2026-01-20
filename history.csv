@@ -1,0 +1,2 @@
+date,brand,category,use_case,model_provider,total_distance,raw_json
+2026-01-20,Hoka,Trail Running Shoes,Muddy 15K,OpenAI,4.69,"{""Durability"": 8, ""Comfort"": 9, ""Traction"": 7, ""Weight"": 8, ""Water_Resistance"": 6, ""Total_Distance"": 4.69}"
