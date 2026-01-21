@@ -1,61 +1,94 @@
-from github import Github
-import os
-import json
 import pandas as pd
-import io
-import streamlit as st # Added this import
+import json
+import os
+import base64
+from github import Github, GithubException
+import streamlit as st
 
-# --- CONFIGURATION ---
-# ⚠️ REPLACE WITH YOUR ACTUAL REPO NAME (e.g., "JasonSmith/geo-enterprise")
-REPO_NAME = "j-b-agent-c/geo-enterprise" 
+# TRY to get token from Streamlit Secrets (for the App)
+# If not there, check Environment Variables (for the Action)
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+if not GITHUB_TOKEN:
+    try:
+        GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
+    except:
+        pass
+
+# REPO_NAME: You must set this in Streamlit Secrets or find it dynamically
+# Format: "username/repo-name"
+REPO_NAME = os.environ.get("REPO_NAME")
+if not REPO_NAME:
+    try:
+        REPO_NAME = st.secrets["REPO_NAME"]
+    except:
+        # Fallback for local testing or if variable missing
+        REPO_NAME = "j-b-agent-c/geo-enterprise" 
 
 def get_repo():
-    # 1. Try to get token from GitHub Actions (os.environ)
-    token = os.environ.get("GH_TOKEN")
-    
-    # 2. If not found, try to get from Streamlit Cloud (st.secrets)
-    if not token:
-        try:
-            token = st.secrets["GH_TOKEN"]
-        except:
-            token = None
-            
-    if not token:
+    if not GITHUB_TOKEN:
+        print("⚠️ GitHub Token missing.")
         return None
-        
-    g = Github(token)
+    g = Github(GITHUB_TOKEN)
     return g.get_repo(REPO_NAME)
 
 def load_config():
+    """Loads targets from config.json in the repo."""
     try:
         repo = get_repo()
-        contents = repo.get_contents("tracking_config.json")
-        return json.loads(contents.decoded_content.decode())
-    except:
-        return [] 
+        if not repo: return []
+        
+        contents = repo.get_contents("config.json")
+        decoded = base64.b64decode(contents.content).decode("utf-8")
+        return json.loads(decoded)
+    except Exception as e:
+        print(f"⚠️ Config Load Error: {e}")
+        return []
 
-def save_config(new_config):
-    repo = get_repo()
-    data_str = json.dumps(new_config, indent=2)
+def save_config(new_data):
+    """Pushes updated targets to config.json in the repo."""
     try:
-        contents = repo.get_contents("tracking_config.json")
-        repo.update_file(contents.path, "Update Config", data_str, contents.sha)
-    except:
-        repo.create_file("tracking_config.json", "Create Config", data_str)
+        repo = get_repo()
+        if not repo: return
+        
+        json_str = json.dumps(new_data, indent=2)
+        
+        # Check if file exists to decide Update vs Create
+        try:
+            contents = repo.get_contents("config.json")
+            repo.update_file(
+                path=contents.path,
+                message="Update Tracker Config via Streamlit",
+                content=json_str,
+                sha=contents.sha
+            )
+        except GithubException:
+            repo.create_file(
+                path="config.json",
+                message="Create Tracker Config via Streamlit",
+                content=json_str
+            )
+        print("✅ Config saved to GitHub.")
+    except Exception as e:
+        print(f"❌ Config Save Error: {e}")
 
 def load_history():
+    """Loads history.csv from repo."""
     try:
+        # Check local first (for Action context)
+        if os.path.exists("history.csv"):
+            return pd.read_csv("history.csv")
+            
+        # Fallback to API (for Streamlit context)
         repo = get_repo()
+        if not repo: return pd.DataFrame()
+        
         contents = repo.get_contents("history.csv")
-        return pd.read_csv(io.StringIO(contents.decoded_content.decode()))
+        from io import StringIO
+        csv_content = base64.b64decode(contents.content).decode("utf-8")
+        return pd.read_csv(StringIO(csv_content))
     except:
         return pd.DataFrame()
 
 def save_history_csv(df):
-    repo = get_repo()
-    csv_content = df.to_csv(index=False)
-    try:
-        contents = repo.get_contents("history.csv")
-        repo.update_file(contents.path, "📈 Daily Data Update", csv_content, contents.sha)
-    except:
-        repo.create_file("history.csv", "📈 Create History Log", csv_content)
+    """Saves history.csv locally (The Action's YAML handles the Push)."""
+    df.to_csv("history.csv", index=False)
