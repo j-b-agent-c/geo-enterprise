@@ -75,61 +75,72 @@ with tab2:
         st.subheader("1. Category Leaderboard (Mentions vs. Rank)")
         
         if not dff.empty:
-            # Prepare Data
-            brand_counts = dff['brand'].value_counts().reset_index()
-            brand_counts.columns = ['Brand', 'Mentions']
+            # 1. CLEAN DATA: Ensure 'rank' is numeric
+            dff['rank'] = pd.to_numeric(dff['rank'], errors='coerce')
             
-            avg_rank = dff.groupby('brand')['rank'].mean().reset_index()
+            # 2. PREPARE COUNTS
+            brand_counts = dff['brand'].value_counts().reset_index()
+            # Explicitly rename columns to handle any Pandas version differences
+            brand_counts.columns = ['Brand', 'Mentions'] 
+            
+            # 3. PREPARE RANKS (Drop missing ranks before averaging)
+            rank_clean = dff.dropna(subset=['rank'])
+            avg_rank = rank_clean.groupby('brand')['rank'].mean().reset_index()
             avg_rank.columns = ['Brand', 'Avg_Rank']
             
+            # 4. MERGE (Inner join ensures we only chart brands that have both data points)
             leaderboard = pd.merge(brand_counts, avg_rank, on='Brand')
             leaderboard = leaderboard.sort_values(by='Mentions', ascending=False).head(10)
             
-            # Create Combo Chart
-            fig_combo = go.Figure()
+            # 5. BUILD COMBO CHART
+            if not leaderboard.empty:
+                fig_combo = go.Figure()
 
-            # Trace 1: Bars for Mentions (Left Axis)
-            fig_combo.add_trace(go.Bar(
-                x=leaderboard['Brand'],
-                y=leaderboard['Mentions'],
-                name='Mention Count',
-                marker_color='#636EFA',
-                yaxis='y1'
-            ))
+                # Trace 1: Bars for Mentions (Left Axis)
+                fig_combo.add_trace(go.Bar(
+                    x=leaderboard['Brand'],
+                    y=leaderboard['Mentions'],
+                    name='Mention Count',
+                    marker_color='#636EFA',
+                    yaxis='y1'
+                ))
 
-            # Trace 2: Line/Markers for Avg Rank (Right Axis)
-            fig_combo.add_trace(go.Scatter(
-                x=leaderboard['Brand'],
-                y=leaderboard['Avg_Rank'],
-                name='Avg Rank (Lower is Better)',
-                mode='lines+markers',
-                marker=dict(color='red', size=10),
-                line=dict(width=3),
-                yaxis='y2'
-            ))
+                # Trace 2: Line/Markers for Avg Rank (Right Axis)
+                fig_combo.add_trace(go.Scatter(
+                    x=leaderboard['Brand'],
+                    y=leaderboard['Avg_Rank'],
+                    name='Avg Rank (Lower is Better)',
+                    mode='lines+markers',
+                    marker=dict(color='red', size=10),
+                    line=dict(width=3),
+                    yaxis='y2'
+                ))
 
-            # Layout: Dual Axis Setup
-            fig_combo.update_layout(
-                title='Share of Voice (Bars) vs. Average Rank (Line)',
-                xaxis=dict(title='Brand'),
-                yaxis=dict(
-                    title='Mention Count',
-                    titlefont=dict(color='#636EFA'),
-                    tickfont=dict(color='#636EFA')
-                ),
-                yaxis2=dict(
-                    title='Average Rank',
-                    titlefont=dict(color='red'),
-                    tickfont=dict(color='red'),
-                    overlaying='y',
-                    side='right',
-                    autorange="reversed" # Invert so Rank 1 is at the top
-                ),
-                legend=dict(x=0.01, y=0.99),
-                barmode='group'
-            )
-            
-            st.plotly_chart(fig_combo, use_container_width=True)
+                # Layout: Dual Axis Setup
+                fig_combo.update_layout(
+                    title='Share of Voice (Bars) vs. Average Rank (Line)',
+                    xaxis=dict(title='Brand'),
+                    yaxis=dict(
+                        title='Mention Count',
+                        titlefont=dict(color='#636EFA'),
+                        tickfont=dict(color='#636EFA')
+                    ),
+                    yaxis2=dict(
+                        title='Average Rank',
+                        titlefont=dict(color='red'),
+                        tickfont=dict(color='red'),
+                        overlaying='y',
+                        side='right',
+                        autorange="reversed" # Invert so Rank 1 is at the top
+                    ),
+                    legend=dict(x=0.01, y=0.99),
+                    barmode='group',
+                    height=500
+                )
+                
+                st.plotly_chart(fig_combo, use_container_width=True)
+            else:
+                st.warning("Not enough data to generate leaderboard yet.")
 
         col_a, col_b = st.columns(2)
 
@@ -180,7 +191,10 @@ with tab2:
         with col_c:
             st.subheader("4. Gap from Perfection")
             if not latest_df.empty:
+                # Ensure rank is numeric for sorting/sizing
+                latest_df['rank'] = pd.to_numeric(latest_df['rank'], errors='coerce')
                 latest_df = latest_df.sort_values(by='rank')
+                
                 fig_gap = px.scatter(latest_df, x='brand', y='total_distance', 
                                      size='rank', color='type',
                                      title="Euclidean Distance (Lower is Better)",
