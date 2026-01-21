@@ -55,14 +55,16 @@ def run_audit():
         
         print(f"🚀 Running Market Sweep for: {my_brand} in {category}...")
         
-        # --- THE UPDATED MEGA-PROMPT ---
+        # --- THE UPDATED MEGA-PROMPT (With KPI) ---
         prompt = f"""
         Act as a Search Ranking Algorithm & Market Analyst.
         User Query Context: "{use_case}" within the "{category}" market.
 
         OBJECTIVE:
         1. Identify the Top 5 Weighted Decision Vectors.
-        2. For each vector, specify if the data is QUANTITATIVE (measurable, e.g. "4mm drop") or QUALITATIVE (sentiment, e.g. "cozy feel").
+        2. For each vector, specify:
+           - The Data Type (QUANTITATIVE or QUALITATIVE).
+           - The KPI / Unit of Measurement (e.g., "USD", "Millimeters", "Star Rating", "Grams").
         3. Identify Top 10 Leading Brands.
         4. Score '{my_brand}' against these vectors.
 
@@ -73,8 +75,16 @@ def run_audit():
                 "Vector_Name_2": <weight_int>
             }},
             "vector_definitions": {{
-                "Vector_Name_1": {{ "type": "Quantitative", "source_logic": "Measured via spec sheet (e.g., weight in grams)." }},
-                "Vector_Name_2": {{ "type": "Qualitative", "source_logic": "Aggregated user sentiment on comfort." }}
+                "Vector_Name_1": {{ 
+                    "type": "Quantitative", 
+                    "kpi": "Price ($USD)", 
+                    "source_logic": "Measured via MSRP." 
+                }},
+                "Vector_Name_2": {{ 
+                    "type": "Qualitative", 
+                    "kpi": "Sentiment (1-5 Scale)", 
+                    "source_logic": "Aggregated user reviews." 
+                }}
             }},
             "simulated_sources": ["domain1.com", "publication2.com"],
             "market_leaders": [
@@ -99,7 +109,6 @@ def run_audit():
                     
                     # 1. Extract Shared Data
                     vectors = data.get("market_vectors", {})
-                    # NEW: Capture the definitions/reasoning
                     vector_defs = data.get("vector_definitions", {})
                     sources = data.get("simulated_sources", [])
                     
@@ -116,7 +125,7 @@ def run_audit():
                         "use_case": use_case,
                         "model_provider": provider,
                         "vector_weights": json.dumps(vectors),
-                        "vector_details": json.dumps(vector_defs), # NEW COLUMN
+                        "vector_details": json.dumps(vector_defs),
                         "sources": json.dumps(sources)
                     }
 
