@@ -71,41 +71,77 @@ with tab2:
 
         st.divider()
 
-        # --- DATA POINT 1: SHARE OF VOICE & POSITION ---
-        st.subheader("1. Category Leaderboard (Share of Voice)")
+        # --- DATA POINT 1: SHARE OF VOICE & POSITION (COMBO CHART) ---
+        st.subheader("1. Category Leaderboard (Mentions vs. Rank)")
         
         if not dff.empty:
-            # We count how many times each brand appears in the 'Competitor' or 'Target' list
+            # Prepare Data
             brand_counts = dff['brand'].value_counts().reset_index()
             brand_counts.columns = ['Brand', 'Mentions']
             
-            # Average Rank Calculation
             avg_rank = dff.groupby('brand')['rank'].mean().reset_index()
-            # FIX: Rename columns to match 'brand_counts' for the merge
             avg_rank.columns = ['Brand', 'Avg_Rank']
             
             leaderboard = pd.merge(brand_counts, avg_rank, on='Brand')
             leaderboard = leaderboard.sort_values(by='Mentions', ascending=False).head(10)
             
-            fig_sov = px.bar(leaderboard, x='Mentions', y='Brand', color='Avg_Rank', 
-                             title="Top Brands by Frequency of Mention (All Time)",
-                             orientation='h', color_continuous_scale='Bluered_r')
-            fig_sov.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig_sov, use_container_width=True)
+            # Create Combo Chart
+            fig_combo = go.Figure()
+
+            # Trace 1: Bars for Mentions (Left Axis)
+            fig_combo.add_trace(go.Bar(
+                x=leaderboard['Brand'],
+                y=leaderboard['Mentions'],
+                name='Mention Count',
+                marker_color='#636EFA',
+                yaxis='y1'
+            ))
+
+            # Trace 2: Line/Markers for Avg Rank (Right Axis)
+            fig_combo.add_trace(go.Scatter(
+                x=leaderboard['Brand'],
+                y=leaderboard['Avg_Rank'],
+                name='Avg Rank (Lower is Better)',
+                mode='lines+markers',
+                marker=dict(color='red', size=10),
+                line=dict(width=3),
+                yaxis='y2'
+            ))
+
+            # Layout: Dual Axis Setup
+            fig_combo.update_layout(
+                title='Share of Voice (Bars) vs. Average Rank (Line)',
+                xaxis=dict(title='Brand'),
+                yaxis=dict(
+                    title='Mention Count',
+                    titlefont=dict(color='#636EFA'),
+                    tickfont=dict(color='#636EFA')
+                ),
+                yaxis2=dict(
+                    title='Average Rank',
+                    titlefont=dict(color='red'),
+                    tickfont=dict(color='red'),
+                    overlaying='y',
+                    side='right',
+                    autorange="reversed" # Invert so Rank 1 is at the top
+                ),
+                legend=dict(x=0.01, y=0.99),
+                barmode='group'
+            )
+            
+            st.plotly_chart(fig_combo, use_container_width=True)
 
         col_a, col_b = st.columns(2)
 
         # --- DATA POINT 2: VECTOR WEIGHTS ---
         with col_a:
             st.subheader("2. Decision Vector Weights")
-            # Grab the weights from the most recent run (Target row)
             target_row = latest_df[latest_df['type'] == 'Target'].iloc[0] if not latest_df.empty and 'type' in latest_df.columns and (latest_df['type'] == 'Target').any() else None
             
             if target_row is not None and isinstance(target_row['vector_weights'], str):
                 try:
                     weights = json.loads(target_row['vector_weights'])
                     w_df = pd.DataFrame(list(weights.items()), columns=['Vector', 'Weight'])
-                    
                     fig_w = px.pie(w_df, values='Weight', names='Vector', 
                                    title=f"What Matters in '{selected_case}'?", hole=0.4)
                     st.plotly_chart(fig_w, use_container_width=True)
@@ -114,16 +150,13 @@ with tab2:
             else:
                 st.info("No vector weights found for this selection.")
 
-        # --- DATA POINT 3 (NEW): COMPETITIVE SCORECARD ---
+        # --- DATA POINT 3: COMPETITIVE SCORECARD ---
         st.subheader("3. Detailed Competitive Scorecard")
-        
         if not latest_df.empty and 'vector_scores' in latest_df.columns:
-            # Parse the scores for every brand in the latest run
             score_data = []
             for idx, row in latest_df.iterrows():
                 try:
                     scores = json.loads(row['vector_scores'])
-                    # Add Brand Name to the dict so we can pivot later
                     scores['Brand'] = row['brand']
                     score_data.append(scores)
                 except:
@@ -132,8 +165,6 @@ with tab2:
             if score_data:
                 scores_df = pd.DataFrame(score_data)
                 scores_df = scores_df.set_index('Brand')
-                
-                # Heatmap visualization
                 fig_hm = px.imshow(scores_df, text_auto=True, aspect="auto",
                                    color_continuous_scale='RdBu', 
                                    title=f"Head-to-Head: Brand Scores per Vector ({latest_date})")
@@ -177,6 +208,5 @@ with tab2:
             else:
                 st.info("No source data available.")
 
-        # --- RAW DATA INSPECTOR ---
         with st.expander("🔍 Inspect Raw Data"):
             st.dataframe(dff)
