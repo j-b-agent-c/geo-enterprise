@@ -5,10 +5,11 @@ import base64
 from github import Github, GithubException
 import streamlit as st
 
-# 1. AUTHENTICATION: Try Environment first (Action), then Streamlit Secrets (App)
+# 1. AUTHENTICATION SETUP
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 REPO_NAME = os.environ.get("REPO_NAME")
 
+# Try to load from Streamlit Secrets if not in environment
 if not GITHUB_TOKEN:
     try:
         GITHUB_TOKEN = st.secrets["GITHUB_TOKEN"]
@@ -19,13 +20,11 @@ if not REPO_NAME:
     try:
         REPO_NAME = st.secrets["REPO_NAME"]
     except:
-        # FALLBACK: Replace this string with your actual "username/repo" if secrets fail
-        REPO_NAME = "j-b-agent-c/geo-enterprise"
+        REPO_NAME = "j-b-agent-c/geo-enterprise" # Fallback
 
 def get_repo():
     """Authenticates and returns the repository object."""
     if not GITHUB_TOKEN:
-        print("❌ Error: GITHUB_TOKEN is missing.")
         return None
     try:
         g = Github(GITHUB_TOKEN)
@@ -35,35 +34,37 @@ def get_repo():
         return None
 
 def load_config():
-    """Loads targets from config.json in the repo."""
+    """Loads targets from config.json (Checks Local File First!)."""
+    # 1. Try Local File (Best for GitHub Action context)
+    if os.path.exists("config.json"):
+        try:
+            with open("config.json", "r") as f:
+                return json.load(f)
+        except:
+            pass
+
+    # 2. Try GitHub API (Best for Streamlit context)
     try:
         repo = get_repo()
         if not repo: return []
         
-        # Try to get the file from the repo
-        try:
-            contents = repo.get_contents("config.json")
-            decoded = base64.b64decode(contents.content).decode("utf-8")
-            return json.loads(decoded)
-        except:
-            # File doesn't exist yet, return empty list
-            return []
+        contents = repo.get_contents("config.json")
+        decoded = base64.b64decode(contents.content).decode("utf-8")
+        return json.loads(decoded)
     except Exception as e:
         print(f"⚠️ Config Load Error: {e}")
         return []
 
 def save_config(new_data):
-    """Pushes updated targets to config.json in the repo."""
+    """Pushes updated targets to config.json via API."""
     try:
         repo = get_repo()
         if not repo: 
             st.error("Cannot connect to repository. Check GITHUB_TOKEN.")
             return
         
-        # Convert list to JSON string
         json_str = json.dumps(new_data, indent=2)
         
-        # Check if file exists to decide Update vs Create
         try:
             contents = repo.get_contents("config.json")
             repo.update_file(
@@ -73,7 +74,6 @@ def save_config(new_data):
                 sha=contents.sha
             )
         except GithubException:
-            # File missing, create it
             repo.create_file(
                 path="config.json",
                 message="Create Tracker Config via Streamlit",
@@ -82,18 +82,17 @@ def save_config(new_data):
         print("✅ Config saved to GitHub.")
     except Exception as e:
         st.error(f"❌ Config Save Error: {e}")
-        print(f"❌ Config Save Error: {e}")
 
 def load_history():
     """Loads history.csv from repo or local file."""
-    # 1. Try Local File (Best for GitHub Action context)
+    # 1. Try Local File
     if os.path.exists("history.csv"):
         try:
             return pd.read_csv("history.csv")
         except:
             pass
 
-    # 2. Try GitHub API (Best for Streamlit context)
+    # 2. Try GitHub API
     try:
         repo = get_repo()
         if not repo: return pd.DataFrame()
