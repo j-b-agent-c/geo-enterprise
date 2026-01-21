@@ -152,9 +152,9 @@ with tab2:
 
         col_a, col_b = st.columns(2)
 
-        # --- DATA POINT 2: VECTOR WEIGHTS ---
+        # --- DATA POINT 2: VECTOR WEIGHTS & DNA ---
         with col_a:
-            st.subheader("2. Decision Vector Weights")
+            st.subheader("2. Decision Vector Intelligence")
             target_row = latest_df[latest_df['type'] == 'Target'].iloc[0] if not latest_df.empty and 'type' in latest_df.columns and (latest_df['type'] == 'Target').any() else None
             
             if target_row is not None and isinstance(target_row['vector_weights'], str):
@@ -162,12 +162,51 @@ with tab2:
                     weights = json.loads(target_row['vector_weights'])
                     w_df = pd.DataFrame(list(weights.items()), columns=['Vector', 'Weight'])
                     fig_w = px.pie(w_df, values='Weight', names='Vector', 
-                                   title=f"What Matters in '{selected_case}'?", hole=0.4)
+                                   title=f"Importance Weights", hole=0.4)
+                    fig_w.update_layout(showlegend=False)
                     st.plotly_chart(fig_w, use_container_width=True)
                 except:
                     st.warning("Could not parse vector weights.")
             else:
                 st.info("No vector weights found for this selection.")
+
+        with col_b:
+            st.write("") # Spacer
+            st.write("") # Spacer
+            # NEW: Table showing Weights AND Qualitative vs Qualitative
+            if target_row is not None and 'vector_details' in target_row and isinstance(target_row['vector_details'], str):
+                try:
+                    details = json.loads(target_row['vector_details'])
+                    
+                    # Also load weights to merge them in
+                    weights_map = {}
+                    if isinstance(target_row['vector_weights'], str):
+                        weights_map = json.loads(target_row['vector_weights'])
+
+                    # Convert dict to DataFrame for display
+                    detail_rows = []
+                    for vec, info in details.items():
+                        # Get weight safely
+                        weight_val = weights_map.get(vec, 0)
+                        
+                        detail_rows.append({
+                            "Vector": vec,
+                            "Weight": f"{weight_val}%", # NEW COLUMN
+                            "Type": info.get("type", "Unknown"),
+                            "Sourcing Logic": info.get("source_logic", "N/A")
+                        })
+                    
+                    if detail_rows:
+                        st.markdown("##### 🧬 Vector DNA Analysis")
+                        st.dataframe(pd.DataFrame(detail_rows), hide_index=True, use_container_width=True)
+                    else:
+                        st.caption("No deep vector details available for this run.")
+                except:
+                    st.caption("Waiting for next audit run to populate Vector DNA...")
+            else:
+                st.info("Run the updated Daily Audit to see Quantitative vs Qualitative breakdowns.")
+
+        st.divider()
 
         # --- DATA POINT 3: COMPETITIVE SCORECARD ---
         st.subheader("3. Detailed Competitive Scorecard")
