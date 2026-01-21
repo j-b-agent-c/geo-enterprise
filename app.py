@@ -227,29 +227,32 @@ with tab2:
             else:
                 st.info("No data available for gap analysis.")
 
-        # --- DATA POINT 5 (NEW): STRATEGIC LANDSCAPE ---
+        # --- DATA POINT 5: STRATEGIC LANDSCAPE (Brand Colors) ---
         with col_d:
             st.subheader("5. Strategic Landscape")
             if not dff.empty:
                 # Aggregate data by brand
                 strat_df = dff.groupby('brand').agg({
-                    'total_distance': 'mean', # Y-Axis (Performance)
+                    'total_distance': 'mean',
                     'rank': 'mean',
                     'type': 'first',
-                    'brand': 'count' # This counts mentions
+                    'brand': 'count'
                 }).rename(columns={'brand': 'Mentions', 'total_distance': 'Avg_Distance', 'rank': 'Avg_Rank'}).reset_index()
 
-                # Calculate Visibility Score (X-Axis)
+                # Calculate Visibility Score
                 strat_df['Visibility_Score'] = strat_df['Mentions'] / strat_df['Avg_Rank']
+
+                # --- COLOR MAPPING LOGIC ---
+                # We want the Target Brand to be Red, and everyone else to be varying shades of Blue/Grey
+                # Or just assign a unique color to every brand for the legend
                 
                 fig_strat = px.scatter(strat_df, 
                                        x='Visibility_Score', 
                                        y='Avg_Distance', 
-                                       color='type',
+                                       color='brand', # FIX: Color by Brand Name, not Type
                                        size='Mentions',
                                        title="Visibility (X) vs. Performance (Y)",
                                        labels={'Visibility_Score': 'Share of Visibility (Mentions/Rank)', 'Avg_Distance': 'Euclidean Distance (Lower is Better)'},
-                                       color_discrete_map={"Target": "red", "Competitor": "blue"},
                                        hover_data=['Mentions', 'Avg_Rank'])
                 
                 # Invert Y axis so "Good Performance" (Low Distance) is at the top
@@ -260,7 +263,7 @@ with tab2:
 
         st.divider()
 
-        # --- DATA POINT 6: SOURCE ATTRIBUTION (Renumbered) ---
+        # --- DATA POINT 6: SOURCE ATTRIBUTION ---
         st.subheader("6. Source Citations")
         all_sources = []
         if 'sources' in dff.columns:
