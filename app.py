@@ -122,7 +122,7 @@ with tab2:
                     yaxis='y2'
                 ))
 
-                # FIX: Updated Layout to remove 'titlefont' error
+                # Layout: Dual Axis with corrected titlefont syntax
                 fig_combo.update_layout(
                     title='Share of Voice (Bars) vs. Average Rank (Line)',
                     xaxis=dict(title='Brand'),
@@ -191,21 +191,40 @@ with tab2:
 
         col_c, col_d = st.columns(2)
 
-        # --- DATA POINT 4: GAP ANALYSIS ---
+        # --- DATA POINT 4: GAP ANALYSIS (UPDATED) ---
         with col_c:
-            st.subheader("4. Gap from Perfection")
-            if not latest_df.empty:
-                # Ensure rank is numeric for sorting/sizing
-                latest_df['rank'] = pd.to_numeric(latest_df['rank'], errors='coerce')
-                latest_df = latest_df.sort_values(by='rank')
+            st.subheader("4. Gap from Perfection (Average)")
+            if not dff.empty:
+                # 1. Ensure numeric columns
+                dff['total_distance'] = pd.to_numeric(dff['total_distance'], errors='coerce')
+                dff['rank'] = pd.to_numeric(dff['rank'], errors='coerce')
                 
-                fig_gap = px.scatter(latest_df, x='brand', y='total_distance', 
-                                     size='rank', color='type',
-                                     title="Euclidean Distance (Lower is Better)",
+                # 2. Aggregate: Group by Brand and calculate Mean
+                gap_df = dff.groupby('brand').agg({
+                    'total_distance': 'mean',
+                    'rank': 'mean',
+                    'type': 'first' # Keep the brand type (Target vs Competitor)
+                }).reset_index()
+                
+                # Rename for clarity
+                gap_df.rename(columns={'total_distance': 'Avg_Distance', 'rank': 'Avg_Rank'}, inplace=True)
+                
+                # 3. Sort by Distance (Best/Lowest first)
+                gap_df = gap_df.sort_values(by='Avg_Distance')
+
+                # 4. Plot
+                fig_gap = px.scatter(gap_df, x='brand', y='Avg_Distance', 
+                                     size='Avg_Rank', 
+                                     color='type',
+                                     title="Average Euclidean Distance (All Time)",
                                      color_discrete_map={"Target": "red", "Competitor": "blue"},
-                                     hover_data=['rank'])
-                fig_gap.update_yaxes(autorange="reversed")
+                                     hover_data=['Avg_Rank'])
+                
+                # Invert Y axis because 0 distance is "Perfect"
+                fig_gap.update_yaxes(autorange="reversed", title="Avg Distance from Perfect 10")
                 st.plotly_chart(fig_gap, use_container_width=True)
+            else:
+                st.info("No data available for gap analysis.")
 
         # --- DATA POINT 5: SOURCE ATTRIBUTION ---
         with col_d:
