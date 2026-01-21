@@ -152,7 +152,7 @@ with tab2:
 
         col_a, col_b = st.columns(2)
 
-        # --- DATA POINT 2: VECTOR INTELLIGENCE (With KPI) ---
+        # --- DATA POINT 2: VECTOR INTELLIGENCE (Cleaned - No Sources) ---
         st.subheader("2. Decision Vector Intelligence")
         
         # Helper to find valid JSON in a column
@@ -180,6 +180,7 @@ with tab2:
                     if weight_val == 0:
                         continue
                     
+                    # Robust Lookup
                     info = details.get(vec)
                     if not info:
                         for d_key in details:
@@ -191,7 +192,8 @@ with tab2:
                     detail_rows.append({
                         "Vector": vec,
                         "Weight": f"{weight_val}%",
-                        "KPI": info.get("kpi", "N/A"), # NEW COLUMN
+                        "KPI": info.get("kpi", "N/A"),
+                        # "Attributed Sources" removed from here
                         "Type": info.get("type", "Unknown"),
                         "Sourcing Logic": info.get("source_logic", "N/A")
                     })
@@ -294,23 +296,55 @@ with tab2:
 
         st.divider()
 
-        # --- DATA POINT 6: SOURCE ATTRIBUTION ---
-        st.subheader("6. Source Citations")
-        all_sources = []
-        if 'sources' in dff.columns:
-            source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
-            for lst in source_lists:
-                all_sources.extend(lst)
+        # --- DATA POINT 6: SOURCE ATTRIBUTION (Sunburst Chart) ---
+        st.subheader("6. Source Citations (Attribution per Vector)")
         
-        if all_sources:
-            source_counts = Counter(all_sources).most_common(10)
-            s_df = pd.DataFrame(source_counts, columns=['Source', 'Citations'])
-            fig_src = px.bar(s_df, x='Citations', y='Source', orientation='h', 
-                             title="Top Referenced Sources")
-            fig_src.update_layout(yaxis={'categoryorder':'total ascending'})
-            st.plotly_chart(fig_src, use_container_width=True)
-        else:
-            st.info("No source data available.")
+        # We need to build a DataFrame: [Vector, Source, Count]
+        source_rows = []
+        
+        # 1. Try to get details from the new format
+        if details_json:
+            try:
+                details = json.loads(details_json)
+                for vec, info in details.items():
+                    # Get list of sources for this vector
+                    sources_list = info.get("key_sources", [])
+                    if not isinstance(sources_list, list):
+                        continue
+                    
+                    for source in sources_list:
+                        source_rows.append({
+                            "Vector": vec,
+                            "Source": source,
+                            "Count": 1 # Simple count for visualization sizing
+                        })
+            except:
+                pass
 
-        with st.expander("🔍 Inspect Raw Data"):
-            st.dataframe(dff)
+        if source_rows:
+            # 2. Build Sunburst
+            src_df = pd.DataFrame(source_rows)
+            # Create interactive Sunburst: Inner Ring = Vector, Outer Ring = Source
+            fig_sun = px.sunburst(src_df, path=['Vector', 'Source'], values='Count',
+                                  title="Source Attribution Map (Click to Zoom)",
+                                  color='Vector')
+            st.plotly_chart(fig_sun, use_container_width=True)
+            
+        else:
+            # Fallback for old data (Global Bar Chart)
+            all_sources = []
+            if 'sources' in dff.columns:
+                source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
+                for lst in source_lists:
+                    all_sources.extend(lst)
+            
+            if all_sources:
+                st.caption("Detailed attribution not available for historical data. Showing global citations instead.")
+                source_counts = Counter(all_sources).most_common(10)
+                s_df = pd.DataFrame(source_counts, columns=['Source', 'Citations'])
+                fig_src = px.bar(s_df, x='Citations', y='Source', orientation='h', 
+                                 title="Top Referenced Sources (Global)")
+                fig_src.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig_src, use_container_width=True)
+            else:
+                st.info("No source data available.")
