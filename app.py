@@ -152,7 +152,7 @@ with tab2:
 
         col_a, col_b = st.columns(2)
 
-        # --- DATA POINT 2: VECTOR INTELLIGENCE (Cleaned - No Sources) ---
+        # --- DATA POINT 2: VECTOR INTELLIGENCE (Clean Table) ---
         st.subheader("2. Decision Vector Intelligence")
         
         # Helper to find valid JSON in a column
@@ -193,7 +193,6 @@ with tab2:
                         "Vector": vec,
                         "Weight": f"{weight_val}%",
                         "KPI": info.get("kpi", "N/A"),
-                        # "Attributed Sources" removed from here
                         "Type": info.get("type", "Unknown"),
                         "Sourcing Logic": info.get("source_logic", "N/A")
                     })
@@ -296,42 +295,93 @@ with tab2:
 
         st.divider()
 
-        # --- DATA POINT 6: SOURCE ATTRIBUTION (Sunburst Chart) ---
-        st.subheader("6. Source Citations (Attribution per Vector)")
+        # --- DATA POINT 6: DOMAIN POWER RANKINGS (Weighted) ---
+        st.subheader("6. Domain Power Rankings (Strategic Importance)")
         
-        # We need to build a DataFrame: [Vector, Source, Count]
-        source_rows = []
+        domain_scores = {}
+        source_counts = Counter() 
         
-        # 1. Try to get details from the new format
-        if details_json:
+        # 1. Calculate Weighted Scores from NEW data
+        if weights_json and details_json:
             try:
+                weights_map = json.loads(weights_json)
                 details = json.loads(details_json)
-                for vec, info in details.items():
-                    # Get list of sources for this vector
-                    sources_list = info.get("key_sources", [])
-                    if not isinstance(sources_list, list):
-                        continue
+                
+                for vec, weight_val in weights_map.items():
+                    if weight_val == 0: continue
                     
-                    for source in sources_list:
-                        source_rows.append({
-                            "Vector": vec,
-                            "Source": source,
-                            "Count": 1 # Simple count for visualization sizing
-                        })
-            except:
-                pass
+                    # Robust lookup
+                    info = details.get(vec)
+                    if not info:
+                         for d_key in details:
+                            if d_key.lower() == vec.lower():
+                                info = details[d_key]
+                                break
+                    
+                    if info:
+                        sources = info.get("key_sources", [])
+                        if isinstance(sources, list):
+                            for source in sources:
+                                s_clean = source.strip().lower()
+                                
+                                # Add VECTOR WEIGHT to domain score
+                                current_score = domain_scores.get(s_clean, 0)
+                                domain_scores[s_clean] = current_score + weight_val
+                                
+                                source_counts[s_clean] += 1
+            except Exception as e:
+                st.error(f"Calculation Error: {e}")
 
-        if source_rows:
-            # 2. Build Sunburst
-            src_df = pd.DataFrame(source_rows)
-            # Create interactive Sunburst: Inner Ring = Vector, Outer Ring = Source
-            fig_sun = px.sunburst(src_df, path=['Vector', 'Source'], values='Count',
-                                  title="Source Attribution Map (Click to Zoom)",
-                                  color='Vector')
-            st.plotly_chart(fig_sun, use_container_width=True)
+        # 2. Visuals
+        if domain_scores:
+            power_data = []
+            for domain, score in domain_scores.items():
+                power_data.append({
+                    "Domain": domain,
+                    "Power Score": score,
+                    "Citations": source_counts[domain]
+                })
             
+            df_power = pd.DataFrame(power_data)
+            df_power = df_power.sort_values(by="Power Score", ascending=True).tail(15) 
+            
+            tab_a, tab_b = st.tabs(["🏆 Power Chart", "🕸️ Attribution Map"])
+            
+            with tab_a:
+                fig_power = px.bar(
+                    df_power, 
+                    x="Power Score", 
+                    y="Domain", 
+                    orientation='h',
+                    text="Citations", 
+                    title="<b>Most Influential Domains</b><br><i>(Sum of Vector Weights where Cited)</i>",
+                    color="Power Score",
+                    color_continuous_scale="Viridis"
+                )
+                fig_power.update_layout(yaxis={'categoryorder':'total ascending'})
+                st.plotly_chart(fig_power, use_container_width=True)
+                st.caption("ℹ️ **Logic:** If a domain informs a vector worth 30%, it gets 30 points. Citations count (number in bar) is less important than total weight.")
+
+            with tab_b:
+                # Sunburst Logic
+                sunburst_rows = []
+                try:
+                    details = json.loads(details_json)
+                    for vec, info in details.items():
+                        sources = info.get("key_sources", [])
+                        if isinstance(sources, list):
+                            for s in sources:
+                                sunburst_rows.append({"Vector": vec, "Source": s, "Value": 1})
+                    
+                    if sunburst_rows:
+                        df_sun = pd.DataFrame(sunburst_rows)
+                        fig_sun = px.sunburst(df_sun, path=['Vector', 'Source'], values='Value', color='Vector')
+                        st.plotly_chart(fig_sun, use_container_width=True)
+                except:
+                    st.info("Sunburst data unavailable.")
+
         else:
-            # Fallback for old data (Global Bar Chart)
+            # Fallback for OLD data (Standard Bar Chart)
             all_sources = []
             if 'sources' in dff.columns:
                 source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
@@ -339,11 +389,11 @@ with tab2:
                     all_sources.extend(lst)
             
             if all_sources:
-                st.caption("Detailed attribution not available for historical data. Showing global citations instead.")
-                source_counts = Counter(all_sources).most_common(10)
+                st.warning("Showing raw citation counts (Historical Data). Run a new audit to see Weighted Power Scores.")
+                source_counts = Counter(all_sources).most_common(15)
                 s_df = pd.DataFrame(source_counts, columns=['Source', 'Citations'])
                 fig_src = px.bar(s_df, x='Citations', y='Source', orientation='h', 
-                                 title="Top Referenced Sources (Global)")
+                                 title="Top Referenced Sources (Global Count)")
                 fig_src.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig_src, use_container_width=True)
             else:
