@@ -4,7 +4,7 @@ import json
 import plotly.express as px
 import plotly.graph_objects as go
 from collections import Counter
-from github_utils import load_config, save_config, load_history
+from github_utils import load_config, save_config, load_history, save_history_csv
 
 st.set_page_config(page_title="GEO Command Center", layout="wide")
 st.title("🌍 GEO Command Center")
@@ -40,6 +40,13 @@ with tab1:
         if st.button("Reset Configuration"):
             save_config([])
             st.rerun()
+    
+    st.divider()
+    st.warning("⚠️ Danger Zone")
+    if st.button("🗑️ Clear All Historical Data (history.csv)"):
+        save_history_csv(pd.DataFrame())
+        st.success("History cleared successfully!")
+        st.rerun()
 
 # --- TAB 2: ANALYTICS (The New "Market Sweep" Engine) ---
 with tab2:
@@ -75,20 +82,19 @@ with tab2:
         st.subheader("1. Category Leaderboard (Mentions vs. Rank)")
         
         if not dff.empty:
-            # 1. CLEAN DATA: Ensure 'rank' is numeric
+            # 1. CLEAN DATA
             dff['rank'] = pd.to_numeric(dff['rank'], errors='coerce')
             
             # 2. PREPARE COUNTS
             brand_counts = dff['brand'].value_counts().reset_index()
-            # Explicitly rename columns to handle any Pandas version differences
             brand_counts.columns = ['Brand', 'Mentions'] 
             
-            # 3. PREPARE RANKS (Drop missing ranks before averaging)
+            # 3. PREPARE RANKS
             rank_clean = dff.dropna(subset=['rank'])
             avg_rank = rank_clean.groupby('brand')['rank'].mean().reset_index()
             avg_rank.columns = ['Brand', 'Avg_Rank']
             
-            # 4. MERGE (Inner join ensures we only chart brands that have both data points)
+            # 4. MERGE
             leaderboard = pd.merge(brand_counts, avg_rank, on='Brand')
             leaderboard = leaderboard.sort_values(by='Mentions', ascending=False).head(10)
             
@@ -96,7 +102,7 @@ with tab2:
             if not leaderboard.empty:
                 fig_combo = go.Figure()
 
-                # Trace 1: Bars for Mentions (Left Axis)
+                # Trace 1: Bars (Mentions)
                 fig_combo.add_trace(go.Bar(
                     x=leaderboard['Brand'],
                     y=leaderboard['Mentions'],
@@ -105,7 +111,7 @@ with tab2:
                     yaxis='y1'
                 ))
 
-                # Trace 2: Line/Markers for Avg Rank (Right Axis)
+                # Trace 2: Line (Rank)
                 fig_combo.add_trace(go.Scatter(
                     x=leaderboard['Brand'],
                     y=leaderboard['Avg_Rank'],
@@ -116,22 +122,20 @@ with tab2:
                     yaxis='y2'
                 ))
 
-                # Layout: Dual Axis Setup
+                # FIX: Updated Layout to remove 'titlefont' error
                 fig_combo.update_layout(
                     title='Share of Voice (Bars) vs. Average Rank (Line)',
                     xaxis=dict(title='Brand'),
                     yaxis=dict(
-                        title='Mention Count',
-                        titlefont=dict(color='#636EFA'),
+                        title=dict(text='Mention Count', font=dict(color='#636EFA')),
                         tickfont=dict(color='#636EFA')
                     ),
                     yaxis2=dict(
-                        title='Average Rank',
-                        titlefont=dict(color='red'),
+                        title=dict(text='Average Rank', font=dict(color='red')),
                         tickfont=dict(color='red'),
                         overlaying='y',
                         side='right',
-                        autorange="reversed" # Invert so Rank 1 is at the top
+                        autorange="reversed" 
                     ),
                     legend=dict(x=0.01, y=0.99),
                     barmode='group',
