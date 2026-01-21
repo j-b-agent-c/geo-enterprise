@@ -55,7 +55,7 @@ def run_audit():
         
         print(f"🚀 Running Market Sweep for: {my_brand} in {category}...")
         
-        # --- THE UPDATED MEGA-PROMPT (With KPI) ---
+        # --- THE UPDATED MEGA-PROMPT (With Source Attribution) ---
         prompt = f"""
         Act as a Search Ranking Algorithm & Market Analyst.
         User Query Context: "{use_case}" within the "{category}" market.
@@ -64,7 +64,8 @@ def run_audit():
         1. Identify the Top 5 Weighted Decision Vectors.
         2. For each vector, specify:
            - The Data Type (QUANTITATIVE or QUALITATIVE).
-           - The KPI / Unit of Measurement (e.g., "USD", "Millimeters", "Star Rating", "Grams").
+           - The KPI / Unit of Measurement.
+           - KEY SOURCES: The specific domains or types of sites used to evaluate THIS specific vector.
         3. Identify Top 10 Leading Brands.
         4. Score '{my_brand}' against these vectors.
 
@@ -78,15 +79,16 @@ def run_audit():
                 "Vector_Name_1": {{ 
                     "type": "Quantitative", 
                     "kpi": "Price ($USD)", 
-                    "source_logic": "Measured via MSRP." 
+                    "source_logic": "Measured via MSRP.",
+                    "key_sources": ["amazon.com", "nike.com"]
                 }},
                 "Vector_Name_2": {{ 
                     "type": "Qualitative", 
                     "kpi": "Sentiment (1-5 Scale)", 
-                    "source_logic": "Aggregated user reviews." 
+                    "source_logic": "Aggregated user reviews.",
+                    "key_sources": ["reddit.com", "runrepeat.com", "youtube"]
                 }}
             }},
-            "simulated_sources": ["domain1.com", "publication2.com"],
             "market_leaders": [
                 {{ "rank": 1, "brand": "BrandA", "scores": {{ "Vector_Name_1": <1-10>, ... }} }},
                 {{ "rank": 2, "brand": "BrandB", "scores": {{ "Vector_Name_1": <1-10>, ... }} }}
@@ -110,7 +112,12 @@ def run_audit():
                     # 1. Extract Shared Data
                     vectors = data.get("market_vectors", {})
                     vector_defs = data.get("vector_definitions", {})
-                    sources = data.get("simulated_sources", [])
+                    
+                    # We no longer need the global "simulated_sources" list as much, 
+                    # but we can aggregate them for backward compatibility
+                    all_sources = []
+                    for v in vector_defs.values():
+                        all_sources.extend(v.get("key_sources", []))
                     
                     # 2. Process Target
                     target_data = data.get("target_brand_analysis", {})
@@ -126,7 +133,7 @@ def run_audit():
                         "model_provider": provider,
                         "vector_weights": json.dumps(vectors),
                         "vector_details": json.dumps(vector_defs),
-                        "sources": json.dumps(sources)
+                        "sources": json.dumps(list(set(all_sources))) # Deduped list
                     }
 
                     # Add Target Row
