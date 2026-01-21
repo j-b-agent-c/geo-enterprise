@@ -152,7 +152,7 @@ with tab2:
 
         col_a, col_b = st.columns(2)
 
-        # --- DATA POINT 2: VECTOR INTELLIGENCE (Prioritize Weights) ---
+        # --- DATA POINT 2: VECTOR INTELLIGENCE (With KPI) ---
         st.subheader("2. Decision Vector Intelligence")
         
         # Helper to find valid JSON in a column
@@ -171,42 +171,35 @@ with tab2:
         if weights_json:
             try:
                 weights_map = json.loads(weights_json)
-                # Load details if available, else empty dict
                 details = json.loads(details_json) if details_json else {}
 
                 detail_rows = []
                 
-                # LOOP THROUGH WEIGHTS (The Source of Truth)
+                # LOOP THROUGH WEIGHTS
                 for vec, weight_val in weights_map.items():
-                    # 1. Skip 0% weights
                     if weight_val == 0:
                         continue
                     
-                    # 2. Find matching details (Robust Lookup)
                     info = details.get(vec)
                     if not info:
-                        # Try case-insensitive lookup
                         for d_key in details:
                             if d_key.lower() == vec.lower():
                                 info = details[d_key]
                                 break
-                    
-                    # Default if still missing
                     info = info or {}
 
                     detail_rows.append({
                         "Vector": vec,
                         "Weight": f"{weight_val}%",
+                        "KPI": info.get("kpi", "N/A"), # NEW COLUMN
                         "Type": info.get("type", "Unknown"),
                         "Sourcing Logic": info.get("source_logic", "N/A")
                     })
                 
                 if detail_rows:
-                    # Sort by Weight (High to Low)
                     df_view = pd.DataFrame(detail_rows)
                     df_view['_sort'] = df_view['Weight'].apply(lambda x: int(x.strip('%')))
                     df_view = df_view.sort_values(by='_sort', ascending=False).drop(columns=['_sort'])
-                    
                     st.dataframe(df_view, hide_index=True, use_container_width=True)
                 else:
                     st.caption("No significant vectors found (all weights were 0%).")
@@ -248,11 +241,9 @@ with tab2:
         with col_c:
             st.subheader("4. Gap from Perfection (Average)")
             if not dff.empty:
-                # 1. Ensure numeric columns
                 dff['total_distance'] = pd.to_numeric(dff['total_distance'], errors='coerce')
                 dff['rank'] = pd.to_numeric(dff['rank'], errors='coerce')
                 
-                # 2. Aggregate
                 gap_df = dff.groupby('brand').agg({
                     'total_distance': 'mean',
                     'rank': 'mean',
@@ -262,7 +253,6 @@ with tab2:
                 gap_df.rename(columns={'total_distance': 'Avg_Distance', 'rank': 'Avg_Rank'}, inplace=True)
                 gap_df = gap_df.sort_values(by='Avg_Distance')
 
-                # 3. Plot
                 fig_gap = px.scatter(gap_df, x='brand', y='Avg_Distance', 
                                      size='Avg_Rank', 
                                      color='type',
@@ -270,17 +260,15 @@ with tab2:
                                      color_discrete_map={"Target": "red", "Competitor": "blue"},
                                      hover_data=['Avg_Rank'])
                 
-                # FIX: Set range to [10, 0] (Reversed manually)
                 fig_gap.update_yaxes(range=[10, 0], title="Avg Distance from Perfect 10")
                 st.plotly_chart(fig_gap, use_container_width=True)
             else:
                 st.info("No data available for gap analysis.")
 
-        # --- DATA POINT 5: STRATEGIC LANDSCAPE (Brand Colors) ---
+        # --- DATA POINT 5: STRATEGIC LANDSCAPE ---
         with col_d:
             st.subheader("5. Strategic Landscape")
             if not dff.empty:
-                # Aggregate data by brand
                 strat_df = dff.groupby('brand').agg({
                     'total_distance': 'mean',
                     'rank': 'mean',
@@ -288,7 +276,6 @@ with tab2:
                     'brand': 'count'
                 }).rename(columns={'brand': 'Mentions', 'total_distance': 'Avg_Distance', 'rank': 'Avg_Rank'}).reset_index()
 
-                # Calculate Visibility Score
                 strat_df['Visibility_Score'] = strat_df['Mentions'] / strat_df['Avg_Rank']
 
                 fig_strat = px.scatter(strat_df, 
@@ -300,7 +287,6 @@ with tab2:
                                        labels={'Visibility_Score': 'Share of Visibility (Mentions/Rank)', 'Avg_Distance': 'Euclidean Distance (Lower is Better)'},
                                        hover_data=['Mentions', 'Avg_Rank'])
                 
-                # FIX: Set range to [10, 0] (Reversed manually)
                 fig_strat.update_yaxes(range=[10, 0])
                 st.plotly_chart(fig_strat, use_container_width=True)
             else:
