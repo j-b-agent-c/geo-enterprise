@@ -55,7 +55,7 @@ def run_audit():
         
         print(f"🚀 Running Market Sweep for: {my_brand} in {category}...")
         
-        # --- THE UPDATED MEGA-PROMPT (With Source Attribution) ---
+        # --- THE UPDATED MEGA-PROMPT (With Explicit Trust Scores) ---
         prompt = f"""
         Act as a Search Ranking Algorithm & Market Analyst.
         User Query Context: "{use_case}" within the "{category}" market.
@@ -65,7 +65,7 @@ def run_audit():
         2. For each vector, specify:
            - The Data Type (QUANTITATIVE or QUALITATIVE).
            - The KPI / Unit of Measurement.
-           - KEY SOURCES: The specific domains or types of sites used to evaluate THIS specific vector.
+           - KEY SOURCES: List the top domains used. For EACH domain, assign a "Confidence Score" (1-10) representing how much that source influenced this specific vector.
         3. Identify Top 10 Leading Brands.
         4. Score '{my_brand}' against these vectors.
 
@@ -80,13 +80,20 @@ def run_audit():
                     "type": "Quantitative", 
                     "kpi": "Price ($USD)", 
                     "source_logic": "Measured via MSRP.",
-                    "key_sources": ["amazon.com", "nike.com"]
+                    "key_sources": [
+                        {{ "domain": "amazon.com", "score": 9 }},
+                        {{ "domain": "nike.com", "score": 10 }},
+                        {{ "domain": "runningblog.com", "score": 3 }}
+                    ]
                 }},
                 "Vector_Name_2": {{ 
                     "type": "Qualitative", 
                     "kpi": "Sentiment (1-5 Scale)", 
                     "source_logic": "Aggregated user reviews.",
-                    "key_sources": ["reddit.com", "runrepeat.com", "youtube"]
+                    "key_sources": [
+                        {{ "domain": "reddit.com", "score": 9 }},
+                        {{ "domain": "youtube.com", "score": 7 }}
+                    ]
                 }}
             }},
             "market_leaders": [
@@ -113,12 +120,17 @@ def run_audit():
                     vectors = data.get("market_vectors", {})
                     vector_defs = data.get("vector_definitions", {})
                     
-                    # We no longer need the global "simulated_sources" list as much, 
-                    # but we can aggregate them for backward compatibility
+                    # Flatten sources for simple backward compatibility
                     all_sources = []
                     for v in vector_defs.values():
-                        all_sources.extend(v.get("key_sources", []))
-                    
+                        # Handle new object format
+                        raw_sources = v.get("key_sources", [])
+                        for s in raw_sources:
+                            if isinstance(s, dict):
+                                all_sources.append(s.get("domain"))
+                            elif isinstance(s, str):
+                                all_sources.append(s)
+
                     # 2. Process Target
                     target_data = data.get("target_brand_analysis", {})
                     target_scores = target_data.get("scores", {})
@@ -133,7 +145,7 @@ def run_audit():
                         "model_provider": provider,
                         "vector_weights": json.dumps(vectors),
                         "vector_details": json.dumps(vector_defs),
-                        "sources": json.dumps(list(set(all_sources))) # Deduped list
+                        "sources": json.dumps(list(set(all_sources)))
                     }
 
                     # Add Target Row
