@@ -221,8 +221,8 @@ with tab2:
                                      color_discrete_map={"Target": "red", "Competitor": "blue"},
                                      hover_data=['Avg_Rank'])
                 
-                # Invert Y axis
-                fig_gap.update_yaxes(autorange="reversed", title="Avg Distance from Perfect 10")
+                # FIX: Set range to [10, 0] (Reversed manually)
+                fig_gap.update_yaxes(range=[10, 0], title="Avg Distance from Perfect 10")
                 st.plotly_chart(fig_gap, use_container_width=True)
             else:
                 st.info("No data available for gap analysis.")
@@ -242,21 +242,17 @@ with tab2:
                 # Calculate Visibility Score
                 strat_df['Visibility_Score'] = strat_df['Mentions'] / strat_df['Avg_Rank']
 
-                # --- COLOR MAPPING LOGIC ---
-                # We want the Target Brand to be Red, and everyone else to be varying shades of Blue/Grey
-                # Or just assign a unique color to every brand for the legend
-                
                 fig_strat = px.scatter(strat_df, 
                                        x='Visibility_Score', 
                                        y='Avg_Distance', 
-                                       color='brand', # FIX: Color by Brand Name, not Type
+                                       color='brand', 
                                        size='Mentions',
                                        title="Visibility (X) vs. Performance (Y)",
                                        labels={'Visibility_Score': 'Share of Visibility (Mentions/Rank)', 'Avg_Distance': 'Euclidean Distance (Lower is Better)'},
                                        hover_data=['Mentions', 'Avg_Rank'])
                 
-                # Invert Y axis so "Good Performance" (Low Distance) is at the top
-                fig_strat.update_yaxes(autorange="reversed")
+                # FIX: Set range to [10, 0] (Reversed manually)
+                fig_strat.update_yaxes(range=[10, 0])
                 st.plotly_chart(fig_strat, use_container_width=True)
             else:
                 st.info("Not enough data for strategic landscape.")
