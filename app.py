@@ -79,7 +79,7 @@ with tab2:
         st.divider()
 
         # --- DATA POINT 1: SHARE OF VOICE & POSITION (COMBO CHART) ---
-        st.subheader("1. Category Leaderboard (Mentions vs. Rank)")
+        st.subheader("1. Category Leaderboard (Weighted by Visibility)")
         
         if not dff.empty:
             # 1. CLEAN DATA
@@ -96,7 +96,10 @@ with tab2:
             
             # 4. MERGE
             leaderboard = pd.merge(brand_counts, avg_rank, on='Brand')
-            leaderboard = leaderboard.sort_values(by='Mentions', ascending=False).head(10)
+            
+            # CUSTOM METRIC
+            leaderboard['Visibility_Score'] = leaderboard['Mentions'] / leaderboard['Avg_Rank']
+            leaderboard = leaderboard.sort_values(by='Visibility_Score', ascending=False).head(10)
             
             # 5. BUILD COMBO CHART
             if not leaderboard.empty:
@@ -124,12 +127,12 @@ with tab2:
 
                 # Layout: Dual Axis with Fixed Range
                 fig_combo.update_layout(
-                    title='Share of Voice (Bars) vs. Average Rank (Line)',
+                    title='Leaderboard Sorted by Visibility Score (Mentions / Rank)',
                     xaxis=dict(title='Brand'),
                     yaxis=dict(
                         title=dict(text='Mention Count', font=dict(color='#636EFA')),
                         tickfont=dict(color='#636EFA'),
-                        range=[0, 10] # FIX: Locked Left Axis to 0-10
+                        range=[0, 10] 
                     ),
                     yaxis2=dict(
                         title=dict(text='Average Rank', font=dict(color='red')),
@@ -224,24 +227,56 @@ with tab2:
             else:
                 st.info("No data available for gap analysis.")
 
-        # --- DATA POINT 5: SOURCE ATTRIBUTION ---
+        # --- DATA POINT 5 (NEW): STRATEGIC LANDSCAPE ---
         with col_d:
-            st.subheader("5. Source Citations")
-            all_sources = []
-            if 'sources' in dff.columns:
-                source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
-                for lst in source_lists:
-                    all_sources.extend(lst)
-            
-            if all_sources:
-                source_counts = Counter(all_sources).most_common(10)
-                s_df = pd.DataFrame(source_counts, columns=['Source', 'Citations'])
-                fig_src = px.bar(s_df, x='Citations', y='Source', orientation='h', 
-                                 title="Top Referenced Sources")
-                fig_src.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig_src, use_container_width=True)
+            st.subheader("5. Strategic Landscape")
+            if not dff.empty:
+                # Aggregate data by brand
+                strat_df = dff.groupby('brand').agg({
+                    'total_distance': 'mean', # Y-Axis (Performance)
+                    'rank': 'mean',
+                    'type': 'first',
+                    'brand': 'count' # This counts mentions
+                }).rename(columns={'brand': 'Mentions', 'total_distance': 'Avg_Distance', 'rank': 'Avg_Rank'}).reset_index()
+
+                # Calculate Visibility Score (X-Axis)
+                strat_df['Visibility_Score'] = strat_df['Mentions'] / strat_df['Avg_Rank']
+                
+                fig_strat = px.scatter(strat_df, 
+                                       x='Visibility_Score', 
+                                       y='Avg_Distance', 
+                                       color='type',
+                                       size='Mentions',
+                                       title="Visibility (X) vs. Performance (Y)",
+                                       labels={'Visibility_Score': 'Share of Visibility (Mentions/Rank)', 'Avg_Distance': 'Euclidean Distance (Lower is Better)'},
+                                       color_discrete_map={"Target": "red", "Competitor": "blue"},
+                                       hover_data=['Mentions', 'Avg_Rank'])
+                
+                # Invert Y axis so "Good Performance" (Low Distance) is at the top
+                fig_strat.update_yaxes(autorange="reversed")
+                st.plotly_chart(fig_strat, use_container_width=True)
             else:
-                st.info("No source data available.")
+                st.info("Not enough data for strategic landscape.")
+
+        st.divider()
+
+        # --- DATA POINT 6: SOURCE ATTRIBUTION (Renumbered) ---
+        st.subheader("6. Source Citations")
+        all_sources = []
+        if 'sources' in dff.columns:
+            source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
+            for lst in source_lists:
+                all_sources.extend(lst)
+        
+        if all_sources:
+            source_counts = Counter(all_sources).most_common(10)
+            s_df = pd.DataFrame(source_counts, columns=['Source', 'Citations'])
+            fig_src = px.bar(s_df, x='Citations', y='Source', orientation='h', 
+                             title="Top Referenced Sources")
+            fig_src.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_src, use_container_width=True)
+        else:
+            st.info("No source data available.")
 
         with st.expander("🔍 Inspect Raw Data"):
             st.dataframe(dff)
