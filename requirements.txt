@@ -1,6 +1,6 @@
 streamlit
 pandas
 plotly
-openai
+openai>=1.60.0
 google-generativeai
 PyGithub
