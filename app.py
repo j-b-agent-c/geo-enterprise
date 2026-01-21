@@ -152,74 +152,49 @@ with tab2:
 
         col_a, col_b = st.columns(2)
 
-        # --- DATA POINT 2: VECTOR WEIGHTS & DNA (ROBUST FIX) ---
-        with col_a:
-            st.subheader("2. Decision Vector Intelligence")
-            
-            # Try to get weights from the Target row first, but fallback to any row
-            target_row = latest_df[latest_df['type'] == 'Target'].iloc[0] if not latest_df.empty and 'type' in latest_df.columns and (latest_df['type'] == 'Target').any() else None
-            
-            # Helper to find valid JSON in a column
-            def get_first_valid_json(df, col):
-                if col not in df.columns:
-                    return None
-                for val in df[col]:
-                    if isinstance(val, str) and len(val) > 2:
-                        return val
+        # --- DATA POINT 2: VECTOR INTELLIGENCE (Table Only) ---
+        st.subheader("2. Decision Vector Intelligence")
+        
+        # Helper to find valid JSON in a column
+        def get_first_valid_json(df, col):
+            if col not in df.columns:
                 return None
+            for val in df[col]:
+                if isinstance(val, str) and len(val) > 2:
+                    return val
+            return None
 
-            # Get weights
-            weights_json = get_first_valid_json(latest_df, 'vector_weights')
-            
-            if weights_json:
-                try:
-                    weights = json.loads(weights_json)
-                    w_df = pd.DataFrame(list(weights.items()), columns=['Vector', 'Weight'])
-                    fig_w = px.pie(w_df, values='Weight', names='Vector', 
-                                   title=f"Importance Weights", hole=0.4)
-                    fig_w.update_layout(showlegend=False)
-                    st.plotly_chart(fig_w, use_container_width=True)
-                except:
-                    st.warning("Error parsing weights.")
-            else:
-                st.info("No weights found.")
+        # Get weights & details
+        weights_json = get_first_valid_json(latest_df, 'vector_weights')
+        details_json = get_first_valid_json(latest_df, 'vector_details')
+        
+        if details_json:
+            try:
+                details = json.loads(details_json)
+                weights_map = json.loads(weights_json) if weights_json else {}
 
-        with col_b:
-            st.write("") # Spacer
-            st.write("") # Spacer
-            
-            # Get DNA Details (Check ANY row in the dataframe, not just target)
-            details_json = get_first_valid_json(latest_df, 'vector_details')
-            
-            if details_json:
-                try:
-                    details = json.loads(details_json)
-                    weights_map = json.loads(weights_json) if weights_json else {}
-
-                    detail_rows = []
-                    for vec, info in details.items():
-                        weight_val = weights_map.get(vec, 0)
-                        detail_rows.append({
-                            "Vector": vec,
-                            "Weight": f"{weight_val}%",
-                            "Type": info.get("type", "Unknown"),
-                            "Sourcing Logic": info.get("source_logic", "N/A")
-                        })
-                    
-                    if detail_rows:
-                        st.markdown("##### 🧬 Vector DNA Analysis")
-                        st.dataframe(pd.DataFrame(detail_rows), hide_index=True, use_container_width=True)
-                    else:
-                        st.caption("JSON structure was empty.")
-                except Exception as e:
-                    st.error(f"Error parsing DNA: {e}")
-            else:
-                # If column exists but is empty/NaN
-                if 'vector_details' in latest_df.columns:
-                    st.warning("Column 'vector_details' exists but contains no valid JSON for this date.")
-                    st.dataframe(latest_df[['brand', 'vector_details']].head()) # Debug view
+                detail_rows = []
+                for vec, info in details.items():
+                    weight_val = weights_map.get(vec, 0)
+                    detail_rows.append({
+                        "Vector": vec,
+                        "Weight": f"{weight_val}%",
+                        "Type": info.get("type", "Unknown"),
+                        "Sourcing Logic": info.get("source_logic", "N/A")
+                    })
+                
+                if detail_rows:
+                    st.dataframe(pd.DataFrame(detail_rows), hide_index=True, use_container_width=True)
                 else:
-                    st.info("Run the updated Daily Audit to see Quantitative vs Qualitative breakdowns.")
+                    st.caption("JSON structure was empty.")
+            except Exception as e:
+                st.error(f"Error parsing DNA: {e}")
+        else:
+            # If column exists but is empty/NaN
+            if 'vector_details' in latest_df.columns:
+                st.info("Waiting for next audit run to populate Vector DNA...")
+            else:
+                st.info("Run the updated Daily Audit to see Quantitative vs Qualitative breakdowns.")
 
         st.divider()
 
