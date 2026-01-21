@@ -152,7 +152,7 @@ with tab2:
 
         col_a, col_b = st.columns(2)
 
-        # --- DATA POINT 2: VECTOR INTELLIGENCE (Table Only, Filtered) ---
+        # --- DATA POINT 2: VECTOR INTELLIGENCE (Prioritize Weights) ---
         st.subheader("2. Decision Vector Intelligence")
         
         # Helper to find valid JSON in a column
@@ -168,27 +168,31 @@ with tab2:
         weights_json = get_first_valid_json(latest_df, 'vector_weights')
         details_json = get_first_valid_json(latest_df, 'vector_details')
         
-        if details_json:
+        if weights_json:
             try:
-                details = json.loads(details_json)
-                weights_map = json.loads(weights_json) if weights_json else {}
+                weights_map = json.loads(weights_json)
+                # Load details if available, else empty dict
+                details = json.loads(details_json) if details_json else {}
 
                 detail_rows = []
-                for vec, info in details.items():
-                    # Robust Weight Lookup (Case Insensitive)
-                    weight_val = weights_map.get(vec)
-                    if weight_val is None:
-                        for w_key in weights_map:
-                            if w_key.lower() == vec.lower():
-                                weight_val = weights_map[w_key]
-                                break
-                    
-                    if weight_val is None:
-                        weight_val = 0
-
-                    # FILTER: Skip 0% rows
+                
+                # LOOP THROUGH WEIGHTS (The Source of Truth)
+                for vec, weight_val in weights_map.items():
+                    # 1. Skip 0% weights
                     if weight_val == 0:
                         continue
+                    
+                    # 2. Find matching details (Robust Lookup)
+                    info = details.get(vec)
+                    if not info:
+                        # Try case-insensitive lookup
+                        for d_key in details:
+                            if d_key.lower() == vec.lower():
+                                info = details[d_key]
+                                break
+                    
+                    # Default if still missing
+                    info = info or {}
 
                     detail_rows.append({
                         "Vector": vec,
@@ -206,13 +210,11 @@ with tab2:
                     st.dataframe(df_view, hide_index=True, use_container_width=True)
                 else:
                     st.caption("No significant vectors found (all weights were 0%).")
+
             except Exception as e:
-                st.error(f"Error parsing DNA: {e}")
+                st.error(f"Error parsing Vector Data: {e}")
         else:
-            if 'vector_details' in latest_df.columns:
-                st.info("Waiting for next audit run to populate Vector DNA...")
-            else:
-                st.info("Run the updated Daily Audit to see Quantitative vs Qualitative breakdowns.")
+            st.info("No vector weights found in the latest data.")
 
         st.divider()
 
