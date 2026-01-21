@@ -295,13 +295,12 @@ with tab2:
 
         st.divider()
 
-        # --- DATA POINT 6: DOMAIN POWER RANKINGS (Weighted) ---
-        st.subheader("6. Domain Power Rankings (Strategic Importance)")
+        # --- DATA POINT 6: DOMAIN POWER RANKINGS (Explicit Trust Scores) ---
+        st.subheader("6. Domain Power Rankings (Explicit Trust Scores)")
         
         domain_scores = {}
         source_counts = Counter() 
         
-        # 1. Calculate Weighted Scores from NEW data
         if weights_json and details_json:
             try:
                 weights_map = json.loads(weights_json)
@@ -319,16 +318,40 @@ with tab2:
                                 break
                     
                     if info:
-                        sources = info.get("key_sources", [])
-                        if isinstance(sources, list):
-                            for source in sources:
-                                s_clean = source.strip().lower()
+                        # KEY CHANGE: Handle List of Objects or List of Strings
+                        sources_data = info.get("key_sources", [])
+                        
+                        # Case 1: New Data (List of Objects with Scores)
+                        if isinstance(sources_data, list) and len(sources_data) > 0 and isinstance(sources_data[0], dict):
+                            # Calculate Total Confidence for this Vector
+                            total_confidence = sum([item.get("score", 1) for item in sources_data])
+                            if total_confidence == 0: total_confidence = 1
+                            
+                            for item in sources_data:
+                                s_domain = item.get("domain", "Unknown").strip().lower()
+                                s_score = item.get("score", 1)
                                 
-                                # Add VECTOR WEIGHT to domain score
-                                current_score = domain_scores.get(s_clean, 0)
-                                domain_scores[s_clean] = current_score + weight_val
+                                # Attribution Math:
+                                # Domain Share = (Domain Score / Total Confidence) * Vector Weight
+                                attributed_weight = (s_score / total_confidence) * weight_val
                                 
+                                current = domain_scores.get(s_domain, 0)
+                                domain_scores[s_domain] = current + attributed_weight
+                                source_counts[s_domain] += 1
+
+                        # Case 2: Old Data / Fallback (List of Strings)
+                        elif isinstance(sources_data, list) and len(sources_data) > 0 and isinstance(sources_data[0], str):
+                            # Fallback to Simple Decay (Since we don't have scores)
+                            total_shares = sum([1 / (i + 1) for i in range(len(sources_data))])
+                            for i, s_str in enumerate(sources_data):
+                                s_clean = s_str.strip().lower()
+                                rank_weight = (1 / (i + 1)) / total_shares
+                                allocated_score = weight_val * rank_weight
+                                
+                                current = domain_scores.get(s_clean, 0)
+                                domain_scores[s_clean] = current + allocated_score
                                 source_counts[s_clean] += 1
+                                
             except Exception as e:
                 st.error(f"Calculation Error: {e}")
 
@@ -354,34 +377,81 @@ with tab2:
                     y="Domain", 
                     orientation='h',
                     text="Citations", 
-                    title="<b>Most Influential Domains</b><br><i>(Sum of Vector Weights where Cited)</i>",
+                    title="<b>Most Influential Domains (Trust Weighted)</b>",
                     color="Power Score",
                     color_continuous_scale="Viridis"
                 )
                 fig_power.update_layout(yaxis={'categoryorder':'total ascending'})
                 st.plotly_chart(fig_power, use_container_width=True)
-                st.caption("ℹ️ **Logic:** If a domain informs a vector worth 30%, it gets 30 points. Citations count (number in bar) is less important than total weight.")
+                st.caption("ℹ️ **Logic:** Scores are based on explicit 'Confidence Scores' (1-10) assigned by the AI for each source.")
 
             with tab_b:
-                # Sunburst Logic
+                # Weighted Sunburst Logic (With Explicit Scores)
                 sunburst_rows = []
                 try:
+                    weights_map = json.loads(weights_json)
                     details = json.loads(details_json)
+                    
                     for vec, info in details.items():
-                        sources = info.get("key_sources", [])
-                        if isinstance(sources, list):
-                            for s in sources:
-                                sunburst_rows.append({"Vector": vec, "Source": s, "Value": 1})
+                        # Get weight
+                        w_val = weights_map.get(vec)
+                        if w_val is None: 
+                             for w_k in weights_map:
+                                if w_k.lower() == vec.lower():
+                                    w_val = weights_map[w_k]
+                                    break
+                        w_val = w_val or 0
+                        
+                        sources_data = info.get("key_sources", [])
+                        
+                        # NEW DATA (Objects)
+                        if isinstance(sources_data, list) and len(sources_data) > 0 and isinstance(sources_data[0], dict):
+                             total_confidence = sum([item.get("score", 1) for item in sources_data])
+                             if total_confidence == 0: total_confidence = 1
+                             
+                             for item in sources_data:
+                                 s_domain = item.get("domain", "Unknown")
+                                 s_score = item.get("score", 1)
+                                 slice_size = (s_score / total_confidence) * w_val
+                                 
+                                 sunburst_rows.append({
+                                    "Vector": vec, 
+                                    "Source": s_domain, 
+                                    "Impact Share": slice_size,
+                                    "Total Vector Weight": f"{w_val}%",
+                                    "Trust Score": s_score
+                                })
+
+                        # OLD DATA (Strings) - Fallback
+                        elif isinstance(sources_data, list) and len(sources_data) > 0 and isinstance(sources_data[0], str):
+                            total_shares = sum([1 / (i + 1) for i in range(len(sources_data))])
+                            for i, s_str in enumerate(sources_data):
+                                rank_weight = (1 / (i + 1)) / total_shares
+                                slice_size = w_val * rank_weight
+                                sunburst_rows.append({
+                                    "Vector": vec, 
+                                    "Source": s_str, 
+                                    "Impact Share": slice_size,
+                                    "Total Vector Weight": f"{w_val}%",
+                                    "Trust Score": "N/A"
+                                })
                     
                     if sunburst_rows:
                         df_sun = pd.DataFrame(sunburst_rows)
-                        fig_sun = px.sunburst(df_sun, path=['Vector', 'Source'], values='Value', color='Vector')
+                        fig_sun = px.sunburst(
+                            df_sun, 
+                            path=['Vector', 'Source'], 
+                            values='Impact Share', 
+                            color='Vector',
+                            title="<b>Weighted Attribution Map</b><br><i>Slice Size = Impact on Buying Decision</i>",
+                            hover_data=['Total Vector Weight', 'Trust Score']
+                        )
                         st.plotly_chart(fig_sun, use_container_width=True)
-                except:
-                    st.info("Sunburst data unavailable.")
+                except Exception as e:
+                    st.info(f"Sunburst data unavailable: {e}")
 
         else:
-            # Fallback for OLD data (Standard Bar Chart)
+            # Fallback for OLD data
             all_sources = []
             if 'sources' in dff.columns:
                 source_lists = dff['sources'].apply(lambda x: json.loads(x) if isinstance(x, str) else [])
