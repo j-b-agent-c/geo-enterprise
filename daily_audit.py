@@ -55,19 +55,17 @@ def run_audit():
         
         print(f"🚀 Running Market Sweep for: {my_brand} in {category}...")
         
-        # --- THE UPDATED MEGA-PROMPT (With Explicit Trust Scores) ---
+        # --- THE UPDATED MEGA-PROMPT (With Per-Brand Citations) ---
         prompt = f"""
         Act as a Search Ranking Algorithm & Market Analyst.
         User Query Context: "{use_case}" within the "{category}" market.
 
         OBJECTIVE:
         1. Identify the Top 5 Weighted Decision Vectors.
-        2. For each vector, specify:
-           - The Data Type (QUANTITATIVE or QUALITATIVE).
-           - The KPI / Unit of Measurement.
-           - KEY SOURCES: List the top domains used. For EACH domain, assign a "Confidence Score" (1-10) representing how much that source influenced this specific vector.
+        2. Define vectors with Data Type, KPI, and GLOBAL Confidence-Scored Sources.
         3. Identify Top 10 Leading Brands.
         4. Score '{my_brand}' against these vectors.
+        5. CRITICAL: For EVERY brand scored, provide specific "Citations" proving where that specific score came from.
 
         OUTPUT STRICT JSON FORMAT:
         {{
@@ -79,31 +77,31 @@ def run_audit():
                 "Vector_Name_1": {{ 
                     "type": "Quantitative", 
                     "kpi": "Price ($USD)", 
-                    "source_logic": "Measured via MSRP.",
                     "key_sources": [
                         {{ "domain": "amazon.com", "score": 9 }},
-                        {{ "domain": "nike.com", "score": 10 }},
-                        {{ "domain": "runningblog.com", "score": 3 }}
-                    ]
-                }},
-                "Vector_Name_2": {{ 
-                    "type": "Qualitative", 
-                    "kpi": "Sentiment (1-5 Scale)", 
-                    "source_logic": "Aggregated user reviews.",
-                    "key_sources": [
-                        {{ "domain": "reddit.com", "score": 9 }},
-                        {{ "domain": "youtube.com", "score": 7 }}
+                        {{ "domain": "nike.com", "score": 10 }}
                     ]
                 }}
             }},
             "market_leaders": [
-                {{ "rank": 1, "brand": "BrandA", "scores": {{ "Vector_Name_1": <1-10>, ... }} }},
-                {{ "rank": 2, "brand": "BrandB", "scores": {{ "Vector_Name_1": <1-10>, ... }} }}
+                {{ 
+                    "rank": 1, 
+                    "brand": "BrandA", 
+                    "scores": {{ "Vector_Name_1": 8, "Vector_Name_2": 9 }},
+                    "citations": {{ "Vector_Name_1": "amazon.com/branda-price", "Vector_Name_2": "reddit.com/r/running/branda-review" }}
+                }},
+                {{ 
+                    "rank": 2, 
+                    "brand": "BrandB", 
+                    "scores": {{ "Vector_Name_1": 6, "Vector_Name_2": 7 }},
+                    "citations": {{ "Vector_Name_1": "amazon.com/brandb-price", "Vector_Name_2": "youtube.com/brandb-review" }}
+                }}
             ],
             "target_brand_analysis": {{
                 "brand": "{my_brand}",
                 "rank_context": <estimated_rank_int>,
-                "scores": {{ "Vector_Name_1": <1-10>, ... }}
+                "scores": {{ "Vector_Name_1": 5, "Vector_Name_2": 8 }},
+                "citations": {{ "Vector_Name_1": "amazon.com/mybrand-price", "Vector_Name_2": "mybrand.com/specs" }}
             }}
         }}
         """
@@ -120,20 +118,18 @@ def run_audit():
                     vectors = data.get("market_vectors", {})
                     vector_defs = data.get("vector_definitions", {})
                     
-                    # Flatten sources for simple backward compatibility
+                    # Flatten global sources
                     all_sources = []
                     for v in vector_defs.values():
-                        # Handle new object format
                         raw_sources = v.get("key_sources", [])
                         for s in raw_sources:
-                            if isinstance(s, dict):
-                                all_sources.append(s.get("domain"))
-                            elif isinstance(s, str):
-                                all_sources.append(s)
+                            if isinstance(s, dict): all_sources.append(s.get("domain"))
+                            elif isinstance(s, str): all_sources.append(s)
 
                     # 2. Process Target
                     target_data = data.get("target_brand_analysis", {})
                     target_scores = target_data.get("scores", {})
+                    target_citations = target_data.get("citations", {}) # NEW
                     target_dist = calculate_euclidean(target_scores)
                     
                     # Common row data
@@ -156,6 +152,7 @@ def run_audit():
                         "rank": target_data.get("rank_context", 11),
                         "total_distance": target_dist,
                         "vector_scores": json.dumps(target_scores),
+                        "vector_citations": json.dumps(target_citations) # NEW COLUMN
                     })
                     
                     # 3. Process Competitors
@@ -165,6 +162,7 @@ def run_audit():
                             continue
                         
                         l_scores = leader.get("scores", {})
+                        l_citations = leader.get("citations", {}) # NEW
                         l_dist = calculate_euclidean(l_scores)
                         
                         new_rows.append({
@@ -174,6 +172,7 @@ def run_audit():
                             "rank": leader.get("rank"),
                             "total_distance": l_dist,
                             "vector_scores": json.dumps(l_scores),
+                            "vector_citations": json.dumps(l_citations) # NEW COLUMN
                         })
 
                 except Exception as e:
